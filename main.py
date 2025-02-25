@@ -10,6 +10,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom CSS
+st.markdown("""
+    <style>
+    .main {
+        padding: 2rem;
+    }
+    .stMetric {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+    }
+    .stAlert {
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Initialize API client
 @st.cache_resource
 def get_api_client():
@@ -131,18 +149,28 @@ def main():
                 '24h Price Change (%)'
             ]
 
-            # Format numeric columns
-            formatted_df['Price (USD)'] = formatted_df['Price (USD)'].map('${:,.4f}'.format)
-            formatted_df['Market Cap (USD)'] = formatted_df['Market Cap (USD)'].map('${:,.0f}'.format)
-            formatted_df['Volume (24h)'] = formatted_df['Volume (24h)'].map('${:,.0f}'.format)
-            formatted_df['Volume/MCap Ratio (%)'] = formatted_df['Volume/MCap Ratio (%)'].map('{:.2f}%'.format)
-            formatted_df['Market Dominance (%)'] = formatted_df['Market Dominance (%)'].map('{:.4f}%'.format)
-            formatted_df['24h Price Change (%)'] = formatted_df['24h Price Change (%)'].map('{:+.2f}%'.format)
+            # Format numeric columns while preserving original values for sorting
+            formatted_df_display = formatted_df.copy()
+            formatted_df_display['Price (USD)'] = formatted_df['Price (USD)'].map('${:,.4f}'.format)
+            formatted_df_display['Market Cap (USD)'] = formatted_df['Market Cap (USD)'].map('${:,.0f}'.format)
+            formatted_df_display['Volume (24h)'] = formatted_df['Volume (24h)'].map('${:,.0f}'.format)
+            formatted_df_display['Volume/MCap Ratio (%)'] = formatted_df['Volume/MCap Ratio (%)'].map('{:.2f}%'.format)
+            formatted_df_display['Market Dominance (%)'] = formatted_df['Market Dominance (%)'].map('{:.4f}%'.format)
+            formatted_df_display['24h Price Change (%)'] = formatted_df['24h Price Change (%)'].map('{:+.2f}%'.format)
 
             st.dataframe(
                 formatted_df,
                 use_container_width=True,
-                height=600
+                height=600,
+                hide_index=True,
+                column_config={
+                    "Price (USD)": st.column_config.NumberColumn(format="$%.4f"),
+                    "Market Cap (USD)": st.column_config.NumberColumn(format="$%.0f"),
+                    "Volume (24h)": st.column_config.NumberColumn(format="$%.0f"),
+                    "Volume/MCap Ratio (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Market Dominance (%)": st.column_config.NumberColumn(format="%.4f%%"),
+                    "24h Price Change (%)": st.column_config.NumberColumn(format="%+.2f%%"),
+                }
             )
 
         # Add disclaimer
