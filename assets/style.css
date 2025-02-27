@@ -1,0 +1,44 @@
+/* Custom styling for the Streamlit app */
+.stApp {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header styling */
+.main .block-container {
+    padding-top: 2rem;
+}
+
+/* Metric containers */
+.css-1r6slb0 {
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Table styling */
+.stDataFrame {
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+}
+
+/* Button styling */
+.stButton button {
+    width: 100%;
+    border-radius: 4px;
+    background-color: #FF4B4B;
+    color: white;
+}
+
+.stButton button:hover {
+    background-color: #ff3333;
+}
+
+/* Disclaimer text */
+.element-container:last-child {
+    font-size: 0.9em;
+    color: #666;
+    border-top: 1px solid #eee;
+    padding-top: 1rem;
+}
