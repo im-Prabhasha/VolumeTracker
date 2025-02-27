@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from utils.coingecko_api import CoinGeckoAPI
+from typing import Optional
 
 # Page configuration
 st.set_page_config(
@@ -10,24 +11,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .main {
-        padding: 2rem;
-    }
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-    }
-    .stAlert {
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 # Initialize API client
 @st.cache_resource
 def get_api_client():
@@ -35,7 +18,7 @@ def get_api_client():
 
 # Data fetching function
 @st.cache_data(ttl=300)  # Cache for 5 minutes
-def fetch_crypto_data():
+def fetch_crypto_data() -> Optional[pd.DataFrame]:
     """Fetch data for cryptocurrencies"""
     api_client = get_api_client()
 
@@ -44,16 +27,41 @@ def fetch_crypto_data():
         if not data:
             return None
 
-        df = pd.DataFrame(data)
+        try:
+            df = pd.DataFrame(data)
 
-        # Calculate total market cap for dominance calculation
-        total_market_cap = df['market_cap'].sum()
+            # Calculate total market cap for dominance calculation
+            total_market_cap = df['market_cap'].sum()
+            if total_market_cap > 0:
+                # Calculate metrics
+                df['volume_market_cap_ratio'] = (df['total_volume'].fillna(0) / df['market_cap'].fillna(1) * 100).round(2)
+                df['market_dominance'] = (df['market_cap'].fillna(0) / total_market_cap * 100).round(2)
+            else:
+                df['volume_market_cap_ratio'] = 0
+                df['market_dominance'] = 0
 
-        # Calculate metrics
-        df['volume_market_cap_ratio'] = (df['total_volume'] / df['market_cap'] * 100).round(2)  # As percentage
-        df['market_dominance'] = (df['market_cap'] / total_market_cap * 100).round(2)  # As percentage
-        df['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return df
+            df['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Ensure numeric columns
+            numeric_columns = [
+                'volume_change_percentage_24h',
+                'volume_change_percentage_1h',
+                'volume_change_percentage_5m',
+                'price_change_percentage_24h',
+                'volume_market_cap_ratio',
+                'market_dominance'
+            ]
+
+            # Convert columns to numeric with better error handling
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+            return df
+
+        except Exception as e:
+            st.error(f"Error processing data: {str(e)}")
+            return None
 
 # Main app
 def main():
@@ -77,9 +85,79 @@ def main():
         with col2:
             st.text(f"Last updated: {df['timestamp'].iloc[0]}")
 
+        # Pin BTC, ETH, and BTC.D at the top
+        st.markdown("### 📊 Key Assets Overview")
+
+        # Filter for BTC and ETH
+        btc_data = df[df['symbol'] == 'BTC'].iloc[0] if not df[df['symbol'] == 'BTC'].empty else None
+        eth_data = df[df['symbol'] == 'ETH'].iloc[0] if not df[df['symbol'] == 'ETH'].empty else None
+
+        # Create three columns for BTC, ETH, and BTC.D
+        key_col1, key_col2, key_col3 = st.columns(3)
+
+        with key_col1:
+            st.markdown("#### Bitcoin (BTC)")
+            if btc_data is not None:
+                st.metric(
+                    "Price",
+                    f"${btc_data['current_price']:,.2f}",
+                    f"{btc_data['price_change_percentage_24h']:+.2f}%"
+                )
+                st.metric(
+                    "Volume/MCap Ratio",
+                    f"{btc_data['volume_market_cap_ratio']:.2f}%",
+                    f"{btc_data['volume_change_percentage_24h']:+.2f}%"
+                )
+                st.metric(
+                    "Market Dominance",
+                    f"{btc_data['market_dominance']:.2f}%"
+                )
+
+        with key_col2:
+            st.markdown("#### Ethereum (ETH)")
+            if eth_data is not None:
+                st.metric(
+                    "Price",
+                    f"${eth_data['current_price']:,.2f}",
+                    f"{eth_data['price_change_percentage_24h']:+.2f}%"
+                )
+                st.metric(
+                    "Volume/MCap Ratio",
+                    f"{eth_data['volume_market_cap_ratio']:.2f}%",
+                    f"{eth_data['volume_change_percentage_24h']:+.2f}%"
+                )
+                st.metric(
+                    "Market Dominance",
+                    f"{eth_data['market_dominance']:.2f}%"
+                )
+
+        with key_col3:
+            st.markdown("#### Market Overview")
+            # Calculate total market cap excluding stablecoins
+            total_mcap = df['market_cap'].sum()
+            btc_dominance = btc_data['market_dominance'] if btc_data is not None else 0
+            st.metric(
+                "Total Market Cap",
+                f"${total_mcap:,.0f}",
+                None
+            )
+            st.metric(
+                "BTC.D",
+                f"{btc_dominance:.2f}%",
+                None
+            )
+            st.metric(
+                "Avg Vol/MCap Ratio",
+                f"{df['volume_market_cap_ratio'].mean():.2f}%",
+                None
+            )
+
+        # Add separator
+        st.markdown("---")
+
         # Key metrics
         st.markdown("### 📊 Market Overview")
-        metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+        metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
 
         with metrics_col1:
             st.metric(
@@ -101,6 +179,14 @@ def main():
             st.metric(
                 "Median Vol/MCap Ratio",
                 f"{median_ratio:.1f}%"
+            )
+
+        with metrics_col4:
+            avg_vol_change = df['volume_change_percentage_5m'].mean()
+            st.metric(
+                "Avg 5m Vol Change",
+                f"{avg_vol_change:+.2f}%",
+                delta_color="normal"
             )
 
         # Show high volume coins by default
@@ -132,44 +218,41 @@ def main():
         else:
             st.text(f"Showing {len(filtered_df)} coins matching the criteria")
 
-            # Sort by volume/market cap ratio before formatting
-            filtered_df = filtered_df.sort_values('volume_market_cap_ratio', ascending=False)
-
             # Display columns
             display_cols = [
                 'name', 'symbol', 'current_price', 'market_cap',
-                'total_volume', 'volume_market_cap_ratio', 'market_dominance',
-                'price_change_percentage_24h'
+                'total_volume', 'volume_market_cap_ratio',
+                'volume_change_percentage_5m', 'volume_change_percentage_1h', 'volume_change_percentage_24h',
+                'market_dominance', 'price_change_percentage_24h'
             ]
 
-            formatted_df = filtered_df[display_cols].copy()
-            formatted_df.columns = [
+            # Create display DataFrame with proper column names
+            display_df = filtered_df[display_cols].copy()
+            display_df.columns = [
                 'Name', 'Symbol', 'Price (USD)', 'Market Cap (USD)',
-                'Volume (24h)', 'Volume/MCap Ratio (%)', 'Market Dominance (%)',
-                '24h Price Change (%)'
+                'Volume (24h)', 'Volume/MCap Ratio (%)',
+                '5m Vol Change (%)', '1h Vol Change (%)', '24h Vol Change (%)',
+                'Market Dominance (%)', '24h Price Change (%)'
             ]
 
-            # Format numeric columns while preserving original values for sorting
-            formatted_df_display = formatted_df.copy()
-            formatted_df_display['Price (USD)'] = formatted_df['Price (USD)'].map('${:,.4f}'.format)
-            formatted_df_display['Market Cap (USD)'] = formatted_df['Market Cap (USD)'].map('${:,.0f}'.format)
-            formatted_df_display['Volume (24h)'] = formatted_df['Volume (24h)'].map('${:,.0f}'.format)
-            formatted_df_display['Volume/MCap Ratio (%)'] = formatted_df['Volume/MCap Ratio (%)'].map('{:.2f}%'.format)
-            formatted_df_display['Market Dominance (%)'] = formatted_df['Market Dominance (%)'].map('{:.4f}%'.format)
-            formatted_df_display['24h Price Change (%)'] = formatted_df['24h Price Change (%)'].map('{:+.2f}%'.format)
-
+            # Display the dataframe with proper formatting
             st.dataframe(
-                formatted_df,
+                display_df,
                 use_container_width=True,
                 height=600,
                 hide_index=True,
                 column_config={
+                    "Name": st.column_config.TextColumn(width="medium"),
+                    "Symbol": st.column_config.TextColumn(width="small"),
                     "Price (USD)": st.column_config.NumberColumn(format="$%.4f"),
                     "Market Cap (USD)": st.column_config.NumberColumn(format="$%.0f"),
                     "Volume (24h)": st.column_config.NumberColumn(format="$%.0f"),
                     "Volume/MCap Ratio (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "5m Vol Change (%)": st.column_config.NumberColumn(format="%+.2f%%"),
+                    "1h Vol Change (%)": st.column_config.NumberColumn(format="%+.2f%%"),
+                    "24h Vol Change (%)": st.column_config.NumberColumn(format="%+.2f%%"),
                     "Market Dominance (%)": st.column_config.NumberColumn(format="%.4f%%"),
-                    "24h Price Change (%)": st.column_config.NumberColumn(format="%+.2f%%"),
+                    "24h Price Change (%)": st.column_config.NumberColumn(format="%+.2f%%")
                 }
             )
 
